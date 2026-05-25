@@ -33,6 +33,9 @@ class Transaction extends HiveObject {
   @HiveField(8)
   final String? expedition;
 
+  @HiveField(9)
+  final String? recipientName;
+
   Transaction({
     required this.id,
     required this.type,
@@ -43,6 +46,7 @@ class Transaction extends HiveObject {
     required this.newStock,
     required this.timestamp,
     this.expedition,
+    this.recipientName,
   });
 
   bool get isIncoming => type == 'incoming';

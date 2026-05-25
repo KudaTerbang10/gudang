@@ -5,6 +5,7 @@ import 'product.dart';
 import 'product_detail_page.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'activity_history_page.dart';
 
 class InventoryPage extends StatefulWidget {
   const InventoryPage({super.key});
@@ -26,8 +27,20 @@ class _InventoryPageState extends State<InventoryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Gudang - Aneka Sarana Prima'),
+        title: const Text('ASP Warehouse'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const ActivityHistoryPage(),
+                ),
+              );
+            },
+            tooltip: 'Riwayat Aktivitas',
+          ),
           IconButton(
             icon: const Icon(Icons.download),
             onPressed: () => _showBulkTransactionDialog(context, 'incoming'),
@@ -210,6 +223,7 @@ class _InventoryPageState extends State<InventoryPage> {
               ),
             );
           },
+          onLongPress: () => _showEditProductDialog(context, p),
           child: Card(
             elevation: 2,
             margin: const EdgeInsets.only(bottom: 12),
@@ -234,6 +248,110 @@ class _InventoryPageState extends State<InventoryPage> {
           ),
         );
       },
+    );
+  }
+
+  void _showEditProductDialog(BuildContext context, Product product) {
+    final nameController = TextEditingController(text: product.name);
+    final stockController = TextEditingController(
+      text: product.stock.toString(),
+    );
+    final locController = TextEditingController(text: product.location);
+    bool allowStockEdit = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Edit Informasi Produk'),
+          actionsAlignment: MainAxisAlignment.spaceBetween,
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(labelText: 'Nama Produk'),
+                ),
+                TextField(
+                  controller: locController,
+                  decoration: const InputDecoration(labelText: 'Lokasi'),
+                ),
+                const SizedBox(height: 16),
+                const Divider(),
+                SwitchListTile(
+                  title: const Text(
+                    'Buka Kunci Stok',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: const Text(
+                    'Aktifkan hanya untuk koreksi stok manual',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                  value: allowStockEdit,
+                  onChanged: (val) => setState(() => allowStockEdit = val),
+                ),
+                TextField(
+                  controller: stockController,
+                  decoration: InputDecoration(
+                    labelText: 'Stok (Roll)',
+                    filled: !allowStockEdit,
+                    fillColor: allowStockEdit ? null : Colors.grey.shade100,
+                  ),
+                  keyboardType: TextInputType.number,
+                  enabled: allowStockEdit,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            GestureDetector(
+              onLongPress: () async {
+                await context.read<InventoryProvider>().deleteProduct(
+                  product.id,
+                );
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  _showSuccessSnackBar(context, 'Produk berhasil dihapus');
+                }
+              },
+              child: IconButton(
+                icon: Icon(Icons.delete_forever, color: Colors.red.shade700),
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Tahan ikon sampah untuk menghapus produk'),
+                      duration: Duration(seconds: 1),
+                    ),
+                  );
+                },
+              ),
+            ),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Batal'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    context.read<InventoryProvider>().updateProduct(
+                      id: product.id,
+                      name: nameController.text,
+                      stock:
+                          int.tryParse(stockController.text) ?? product.stock,
+                      location: locController.text,
+                    );
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Simpan'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -422,6 +540,8 @@ class _BulkTransactionItem {
 class _BulkTransactionDialogState extends State<_BulkTransactionDialog> {
   final _docController = TextEditingController();
   final _expeditionController = TextEditingController();
+  final _notesController = TextEditingController();
+  final _recipientController = TextEditingController();
   final List<_BulkTransactionItem> _items = [_BulkTransactionItem()];
 
   final List<String> _expeditions = [
@@ -474,8 +594,14 @@ class _BulkTransactionDialogState extends State<_BulkTransactionDialog> {
     final isIncoming = widget.type == 'incoming';
 
     return AlertDialog(
-      title: Text(
-        isIncoming ? '📥 Barang Masuk (Bulk)' : '📤 Barang Keluar (Bulk)',
+      title: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(
+          isIncoming ? '📥 Barang Masuk (Bulk)' : '📤 Barang Keluar (Bulk)',
+          maxLines: 1,
+          softWrap: false,
+        ),
       ),
       content: SizedBox(
         width: double.maxFinite,
@@ -487,8 +613,8 @@ class _BulkTransactionDialogState extends State<_BulkTransactionDialog> {
                 controller: _docController,
                 decoration: InputDecoration(
                   labelText: isIncoming
-                      ? 'No. Surat Jalan'
-                      : 'No. Surat Jalan / Resi',
+                      ? 'Nomor Surat Jalan'
+                      : 'Nomor Resi / Invoice',
                   border: const OutlineInputBorder(),
                   prefixIcon: const Icon(Icons.assignment),
                   suffixIcon: !isIncoming
@@ -530,6 +656,26 @@ class _BulkTransactionDialogState extends State<_BulkTransactionDialog> {
                   },
                 ),
               ],
+              const SizedBox(height: 12),
+              if (!isIncoming) ...[
+                TextField(
+                  controller: _recipientController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nama Penerima (Opsional)',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.person),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              TextField(
+                controller: _notesController,
+                decoration: const InputDecoration(
+                  labelText: 'Catatan Dokumen (Opsional)',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.note),
+                ),
+              ),
               const Divider(height: 32),
               const Text(
                 'Daftar Barang',
@@ -545,7 +691,7 @@ class _BulkTransactionDialogState extends State<_BulkTransactionDialog> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                        flex: 3,
+                        flex: 5,
                         child: Autocomplete<Product>(
                           displayStringForOption: (p) => p.name,
                           optionsBuilder: (textValue) {
@@ -574,7 +720,7 @@ class _BulkTransactionDialogState extends State<_BulkTransactionDialog> {
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        flex: 1,
+                        flex: 3,
                         child: TextField(
                           controller: item.qtyController,
                           keyboardType: TextInputType.number,
@@ -627,28 +773,31 @@ class _BulkTransactionDialogState extends State<_BulkTransactionDialog> {
             }
 
             try {
+              final List<Map<String, dynamic>> bulkItems = [];
               for (var item in _items) {
                 if (item.product == null) throw 'Ada barang yang belum dipilih';
                 int? qty = int.tryParse(item.qtyController.text);
                 if (qty == null || qty <= 0) {
                   throw 'Qty untuk ${item.product!.name} tidak valid';
                 }
-
-                if (isIncoming) {
-                  await provider.addIncoming(
-                    productId: item.product!.id,
-                    quantity: qty,
-                    documentNumber: doc,
-                  );
-                } else {
-                  await provider.addOutgoing(
-                    productId: item.product!.id,
-                    quantity: qty,
-                    documentNumber: doc,
-                    expedition: _expeditionController.text.trim(),
-                  );
-                }
+                bulkItems.add({'productId': item.product!.id, 'quantity': qty});
               }
+
+              await provider.addBulkTransactions(
+                type: widget.type,
+                documentNumber: doc,
+                items: bulkItems,
+                recipientName: _recipientController.text.trim().isNotEmpty
+                    ? _recipientController.text.trim()
+                    : null,
+                expedition: _expeditionController.text.trim().isNotEmpty
+                    ? _expeditionController.text.trim()
+                    : null,
+                notes: _notesController.text.trim().isNotEmpty
+                    ? _notesController.text.trim()
+                    : null,
+              );
+
               if (mounted) {
                 Navigator.pop(context);
                 AudioPlayer().play(AssetSource('sounds/success.mp3'));

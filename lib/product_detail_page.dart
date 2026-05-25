@@ -83,26 +83,6 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Remove floatingActionButton and floatingActionButtonLocation
-      // floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
-      // floatingActionButton: GestureDetector(
-      //   onLongPress: () => _showDeleteConfirmation(context),
-      //   child: FloatingActionButton(
-      //     onPressed: () {
-      //       // Memberi tahu user bahwa harus ditekan lama
-      //       ScaffoldMessenger.of(context).showSnackBar(
-      //         const SnackBar(
-      //           content: Text('Tekan dan tahan untuk menghapus produk'),
-      //           duration: Duration(seconds: 1),
-      //         ),
-      //       );
-      //     },
-      //     backgroundColor: Colors.red.shade700,
-      //     foregroundColor: Colors.white,
-      //     tooltip: 'Hapus Produk (Tahan)',
-      //     child: const Icon(Icons.delete_forever),
-      //   ),
-      // ),
       appBar: AppBar(
         title: const Text('Detail Produk'),
         bottom: TabBar(
@@ -199,96 +179,6 @@ class _ProductDetailPageState extends State<ProductDetailPage>
             ],
           );
         },
-      ),
-    );
-  }
-
-  Widget _buildDeleteButton(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-        child: GestureDetector(
-          onLongPress: () => _showDeleteConfirmation(context),
-          child: TextButton.icon(
-            icon: Icon(
-              Icons.delete_outline,
-              color: Colors.red.shade700,
-              size: 20,
-            ),
-            label: Text(
-              'Hapus Produk',
-              style: TextStyle(
-                color: Colors.red.shade700,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Tekan dan tahan untuk menghapus produk'),
-                  duration: Duration(seconds: 1),
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showDeleteConfirmation(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Konfirmasi Hapus'),
-        content: const Text(
-          'Apakah anda yakin ingin menghapus produk ini?\n\nSemua riwayat transaksi akan ikut terhapus.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Batal'),
-          ),
-          // Tombol Ya dengan Long Press
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: GestureDetector(
-              onLongPress: () async {
-                Navigator.pop(context); // Tutup Dialog
-                try {
-                  await context.read<InventoryProvider>().deleteProduct(
-                    widget.productId,
-                  );
-
-                  if (mounted) {
-                    _showSuccessSnackBar(context, 'Produk berhasil dihapus');
-                    Navigator.pop(context); // Kembali ke InventoryPage
-                  }
-                } catch (e) {
-                  _showErrorSnackBar(context, 'Gagal menghapus produk: $e');
-                }
-              },
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red.shade700,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: () {
-                  // Feedback jika hanya ditekan biasa
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Tahan tombol "Ya" selama 2 detik untuk mengonfirmasi',
-                      ),
-                      duration: Duration(seconds: 1),
-                    ),
-                  );
-                },
-                child: const Text('Ya (Tahan)'),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -397,7 +287,6 @@ class _ProductDetailPageState extends State<ProductDetailPage>
               },
             ),
           ),
-          _buildDeleteButton(context),
         ],
       ),
     );
@@ -412,6 +301,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     final quantityController = TextEditingController();
     final notesController = TextEditingController();
     final expeditionController = TextEditingController();
+    final recipientController = TextEditingController();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -455,6 +345,15 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                 icon: const Icon(Icons.qr_code_scanner),
                 onPressed: () => _openScanner(context, docNumberController),
               ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: recipientController,
+            decoration: const InputDecoration(
+              labelText: 'Nama Penerima (Opsional)',
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.person),
             ),
           ),
           const SizedBox(height: 12),
@@ -522,6 +421,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                   final quantity = int.tryParse(quantityController.text);
                   final notes = notesController.text.trim();
                   final expedition = expeditionController.text.trim();
+                  final recipient = recipientController.text.trim();
 
                   if (docNumber.isEmpty) {
                     _showErrorSnackBar(
@@ -543,6 +443,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                     productId: widget.productId,
                     quantity: quantity,
                     documentNumber: docNumber,
+                    recipientName: recipient.isNotEmpty ? recipient : null,
                     expedition: expedition.isNotEmpty ? expedition : null,
                     notes: notes.isNotEmpty ? notes : null,
                   );
@@ -562,7 +463,6 @@ class _ProductDetailPageState extends State<ProductDetailPage>
               },
             ),
           ),
-          _buildDeleteButton(context),
         ],
       ),
     );
@@ -634,7 +534,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '${transaction.quantity} Roll',
+                    '${isIncoming ? "+" : "-"}${transaction.quantity} Roll',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       color: isIncoming ? Colors.green : Colors.red,
@@ -659,8 +559,14 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(
-          isIncoming ? '📥 Detail Barang Masuk' : '📤 Detail Barang Keluar',
+        title: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            isIncoming ? '📥 Detail Barang Masuk' : '📤 Detail Barang Keluar',
+            maxLines: 1,
+            softWrap: false,
+          ),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -669,6 +575,8 @@ class _ProductDetailPageState extends State<ProductDetailPage>
             _buildDetailRow('Tipe:', isIncoming ? 'Masuk' : 'Keluar'),
             _buildDetailRow('Jumlah:', '${transaction.quantity} Roll'),
             _buildDetailRow('Nomor Dokumen:', transaction.documentNumber),
+            if (transaction.recipientName != null)
+              _buildDetailRow('Penerima:', transaction.recipientName!),
             if (transaction.expedition != null)
               _buildDetailRow('Ekspedisi:', transaction.expedition!),
             _buildDetailRow(

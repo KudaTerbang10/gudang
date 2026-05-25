@@ -3,6 +3,13 @@ import 'product.dart';
 import 'transaction.dart';
 import 'hive_boxes.dart';
 
+/// Helper class untuk menggabungkan transaksi dengan informasi produknya
+class TransactionWithProduct {
+  final Transaction transaction;
+  final Product product;
+  TransactionWithProduct(this.transaction, this.product);
+}
+
 class InventoryProvider extends ChangeNotifier {
   late List<Product> _allProducts;
   List<Product> _filteredProducts = [];
@@ -21,6 +28,21 @@ class InventoryProvider extends ChangeNotifier {
   bool get isTableView => _isTableView;
   bool get isSortAscending => _isSortAscending;
   int? get sortColumnIndex => _sortColumnIndex;
+
+  /// Mengambil semua transaksi dari semua produk dan diurutkan berdasarkan waktu terbaru
+  List<TransactionWithProduct> get allTransactionsWithProduct {
+    List<TransactionWithProduct> all = [];
+    for (var product in _allProducts) {
+      for (var tx in product.history) {
+        all.add(TransactionWithProduct(tx, product));
+      }
+    }
+    // Urutkan berdasarkan timestamp terbaru (descending)
+    all.sort(
+      (a, b) => b.transaction.timestamp.compareTo(a.transaction.timestamp),
+    );
+    return all;
+  }
 
   // ===== INITIALIZATION & PERSISTENCE =====
   void _loadFromHive() {
@@ -174,6 +196,27 @@ class InventoryProvider extends ChangeNotifier {
     searchProduct(_searchQuery);
   }
 
+  Future<void> updateProduct({
+    required String id,
+    required String name,
+    required int stock,
+    required String location,
+  }) async {
+    final index = _allProducts.indexWhere((p) => p.id == id);
+    if (index != -1) {
+      final oldProduct = _allProducts[index];
+      _allProducts[index] = Product(
+        id: id,
+        name: name,
+        stock: stock,
+        location: location,
+        history: oldProduct.history,
+      );
+      await _saveToHive();
+      searchProduct(_searchQuery);
+    }
+  }
+
   Future<void> deleteProduct(String productId) async {
     _allProducts.removeWhere((p) => p.id == productId);
     await _saveToHive();
@@ -265,6 +308,7 @@ class InventoryProvider extends ChangeNotifier {
     required String productId,
     required int quantity,
     required String documentNumber,
+    String? recipientName,
     String? expedition,
     String? notes,
   }) async {
@@ -313,6 +357,7 @@ class InventoryProvider extends ChangeNotifier {
         newStock: newStock,
         timestamp: DateTime.now(),
         expedition: expedition,
+        recipientName: recipientName,
       );
 
       // Update product
@@ -385,6 +430,8 @@ class InventoryProvider extends ChangeNotifier {
             oldTransaction.previousStock +
             (oldTransaction.isIncoming ? newQuantity : -newQuantity),
         timestamp: oldTransaction.timestamp,
+        expedition: oldTransaction.expedition,
+        recipientName: oldTransaction.recipientName,
       );
 
       // Update history
@@ -395,6 +442,83 @@ class InventoryProvider extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       print('❌ Error editing transaction: $e');
+      rethrow;
+    }
+  }
+
+  /// Menambahkan transaksi massal (Bulk) secara atomik (semua berhasil atau semua gagal)
+  Future<void> addBulkTransactions({
+    required String type,
+    required String documentNumber,
+    required List<Map<String, dynamic>> items,
+    String? recipientName,
+    String? expedition,
+    String? notes,
+  }) async {
+    try {
+      final isIncoming = type == 'incoming';
+
+      // Fase 1: Validasi semua item terlebih dahulu sebelum mengubah state apapun
+      final List<Map<String, dynamic>> processingData = [];
+
+      for (final item in items) {
+        final String productId = item['productId'];
+        final int quantity = item['quantity'];
+
+        final productIndex = _allProducts.indexWhere((p) => p.id == productId);
+        if (productIndex == -1) throw Exception('Produk tidak ditemukan');
+
+        final product = _allProducts[productIndex];
+
+        // Cek duplikasi nomor dokumen per produk
+        if (isDocumentNumberExists(productId, documentNumber)) {
+          throw Exception(
+            'Nomor dokumen "$documentNumber" sudah digunakan untuk "${product.name}"',
+          );
+        }
+
+        // Cek kecukupan stok jika barang keluar
+        if (!isIncoming && quantity > product.stock) {
+          throw Exception(
+            'Stok "${product.name}" tidak mencukupi (Tersedia: ${product.stock}, Diminta: $quantity)',
+          );
+        }
+
+        processingData.add({'product': product, 'quantity': quantity});
+      }
+
+      // Fase 2: Eksekusi perubahan ke memori jika semua validasi di atas lolos
+      final now = DateTime.now();
+      for (final data in processingData) {
+        final Product product = data['product'];
+        final int quantity = data['quantity'];
+
+        final previousStock = product.stock;
+        final newStock = isIncoming
+            ? previousStock + quantity
+            : previousStock - quantity;
+
+        final transaction = Transaction(
+          id: '${now.millisecondsSinceEpoch}_${product.id}',
+          type: type,
+          quantity: quantity,
+          documentNumber: documentNumber,
+          notes: notes,
+          previousStock: previousStock,
+          newStock: newStock,
+          timestamp: now,
+          expedition: expedition,
+          recipientName: recipientName,
+        );
+
+        product.stock = newStock;
+        product.history.add(transaction);
+      }
+
+      // Simpan semua perubahan sekaligus ke Hive
+      await _saveToHive();
+      notifyListeners();
+    } catch (e) {
       rethrow;
     }
   }
