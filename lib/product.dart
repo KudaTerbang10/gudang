@@ -1,5 +1,4 @@
 import 'package:hive/hive.dart';
-import 'transaction.dart';
 
 part 'product.g.dart';
 
@@ -18,15 +17,60 @@ class Product extends HiveObject {
   final String location;
 
   @HiveField(4)
-  final List<Transaction> history;
+  final DateTime updatedAt;
+
+  @HiveField(5)
+  final bool isSynced;
 
   Product({
     required this.id,
     required this.name,
     required this.stock,
     required this.location,
-    List<Transaction>? history,
-  }) : history = history ?? [];
+    required this.updatedAt,
+    required this.isSynced,
+  });
+
+  Product copyWith({
+    String? id,
+    String? name,
+    int? stock,
+    String? location,
+    DateTime? updatedAt,
+    bool? isSynced,
+  }) {
+    return Product(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      stock: stock ?? this.stock,
+      location: location ?? this.location,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isSynced: isSynced ?? this.isSynced,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      '_id': id,
+      'name': name,
+      'stock': stock,
+      'location': location,
+      'updatedAt': updatedAt.toIso8601String(),
+    };
+  }
+
+  factory Product.fromJson(Map<String, dynamic> json) {
+    return Product(
+      id: json['_id'] as String? ?? json['id'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      stock: json['stock'] as int? ?? 0,
+      location: json['location'] as String? ?? '',
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'])
+          : DateTime.now(),
+      isSynced: true,
+    );
+  }
 
   @override
   String toString() =>

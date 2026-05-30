@@ -172,7 +172,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                   children: [
                     _buildIncomingTab(context, provider, product),
                     _buildOutgoingTab(context, provider, product),
-                    _buildHistoryTab(product),
+                    _buildHistoryTab(provider.getTransactionHistory(product.id)),
                   ],
                 ),
               ),
@@ -468,8 +468,8 @@ class _ProductDetailPageState extends State<ProductDetailPage>
     );
   }
 
-  Widget _buildHistoryTab(Product product) {
-    if (product.history.isEmpty) {
+  Widget _buildHistoryTab(List<Transaction> history) {
+    if (history.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -485,14 +485,14 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       );
     }
 
-    final history = product.history.toList()
+    final sortedHistory = List<Transaction>.from(history)
       ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
     return ListView.builder(
       padding: const EdgeInsets.all(8),
-      itemCount: history.length,
+      itemCount: sortedHistory.length,
       itemBuilder: (context, index) {
-        final transaction = history[index];
+        final transaction = sortedHistory[index];
         final isIncoming = transaction.isIncoming;
 
         return GestureDetector(

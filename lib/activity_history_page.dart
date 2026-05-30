@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'analytics_page.dart';
+import 'package:path_provider/path_provider.dart';
 
 class ActivityHistoryPage extends StatefulWidget {
   const ActivityHistoryPage({super.key});
@@ -95,6 +96,11 @@ class _ActivityHistoryPageState extends State<ActivityHistoryPage> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<InventoryProvider>();
+    final filteredHistory = provider.allTransactionsWithProduct
+        .where((item) => _applySearch(item))
+        .where((item) => _applyFilter(item.transaction.timestamp))
+        .toList();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Riwayat Aktivitas'),
@@ -176,13 +182,9 @@ class _ActivityHistoryPageState extends State<ActivityHistoryPage> {
             ),
           ),
           Expanded(
-            child: Consumer<InventoryProvider>(
-              builder: (context, _, __) {
-                final history = provider
-                    .allTransactionsWithProduct // Use the provider from the outer scope
-                    .where((item) => _applySearch(item))
-                    .where((item) => _applyFilter(item.transaction.timestamp))
-                    .toList();
+            child: Builder(
+              builder: (context) {
+                final history = filteredHistory;
 
                 if (history.isEmpty) {
                   return const Center(

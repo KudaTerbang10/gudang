@@ -18,6 +18,7 @@ class TransactionAdapter extends TypeAdapter<Transaction> {
     };
     return Transaction(
       id: fields[0] as String,
+      productId: fields[10] as String,
       type: fields[1] as String,
       quantity: fields[2] as int,
       documentNumber: fields[3] as String,
@@ -27,13 +28,14 @@ class TransactionAdapter extends TypeAdapter<Transaction> {
       timestamp: fields[7] as DateTime,
       expedition: fields[8] as String?,
       recipientName: fields[9] as String?,
+      isSynced: fields[11] as bool,
     );
   }
 
   @override
   void write(BinaryWriter writer, Transaction obj) {
     writer
-      ..writeByte(10)
+      ..writeByte(12)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -53,7 +55,11 @@ class TransactionAdapter extends TypeAdapter<Transaction> {
       ..writeByte(8)
       ..write(obj.expedition)
       ..writeByte(9)
-      ..write(obj.recipientName);
+      ..write(obj.recipientName)
+      ..writeByte(10)
+      ..write(obj.productId)
+      ..writeByte(11)
+      ..write(obj.isSynced);
   }
 
   @override

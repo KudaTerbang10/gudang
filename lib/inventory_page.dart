@@ -29,6 +29,10 @@ class _InventoryPageState extends State<InventoryPage> {
       appBar: AppBar(
         title: const Text('ASP Warehouse'),
         actions: [
+          Consumer<InventoryProvider>(
+            builder: (context, provider, _) =>
+                _buildConnectionIndicator(context, provider),
+          ),
           IconButton(
             icon: const Icon(Icons.history),
             onPressed: () {
@@ -113,9 +117,11 @@ class _InventoryPageState extends State<InventoryPage> {
                             ),
                           );
                         },
-                    child: provider.isTableView
-                        ? _buildTableView(context, provider)
-                        : _buildCardView(provider.products),
+                    child: provider.allProducts.isEmpty
+                        ? _buildEmptyState(context)
+                        : (provider.isTableView
+                              ? _buildTableView(context, provider)
+                              : _buildCardView(provider.products)),
                   ),
                 ),
               ),
@@ -433,6 +439,117 @@ class _InventoryPageState extends State<InventoryPage> {
         content: Text(message),
         backgroundColor: Colors.red.shade600,
         duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  Widget _buildConnectionIndicator(
+    BuildContext context,
+    InventoryProvider provider,
+  ) {
+    Color color;
+    String text;
+    IconData icon;
+
+    if (provider.isConnecting) {
+      color = Colors.blue;
+      text = 'Menghubungkan ke Atlas...';
+      icon = Icons.sync;
+    } else if (provider.isSyncing) {
+      color = Colors.blue;
+      text = 'Menyingkronkan data...';
+      icon = Icons.sync;
+    } else if (provider.isConnected) {
+      color = Colors.green;
+      text = 'Terhubung ke Atlas (Last: ${provider.lastSyncTime ?? '-'})';
+      icon = Icons.cloud_done;
+    } else {
+      color = Colors.orange;
+      text = 'Offline (Menggunakan data lokal)';
+      icon = Icons.cloud_off;
+    }
+
+    return Tooltip(
+      message: text,
+      child: InkWell(
+        onTap: () {
+          provider.syncWithAtlas();
+        },
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (provider.isSyncing || provider.isConnecting)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              else
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: color == Colors.green
+                        ? Colors.greenAccent
+                        : Colors.orangeAccent,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color:
+                            (color == Colors.green
+                                    ? Colors.greenAccent
+                                    : Colors.orangeAccent)
+                                .withValues(alpha: 0.6),
+                        blurRadius: 6,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                ),
+              const SizedBox(width: 6),
+              Icon(icon, size: 16, color: Colors.white70),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.inventory_2_outlined,
+              size: 80,
+              color: Colors.orange.shade200,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Belum Ada Produk',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Database Anda kosong. Silakan tambahkan produk secara manual menggunakan tombol + di bawah.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.black54),
+            ),
+          ],
+        ),
       ),
     );
   }

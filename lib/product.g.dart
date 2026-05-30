@@ -21,14 +21,15 @@ class ProductAdapter extends TypeAdapter<Product> {
       name: fields[1] as String,
       stock: fields[2] as int,
       location: fields[3] as String,
-      history: (fields[4] as List?)?.cast<Transaction>(),
+      updatedAt: fields[4] as DateTime,
+      isSynced: fields[5] as bool,
     );
   }
 
   @override
   void write(BinaryWriter writer, Product obj) {
     writer
-      ..writeByte(5)
+      ..writeByte(6)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -38,7 +39,9 @@ class ProductAdapter extends TypeAdapter<Product> {
       ..writeByte(3)
       ..write(obj.location)
       ..writeByte(4)
-      ..write(obj.history);
+      ..write(obj.updatedAt)
+      ..writeByte(5)
+      ..write(obj.isSynced);
   }
 
   @override
