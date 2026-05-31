@@ -29,8 +29,8 @@ class InventoryProvider extends ChangeNotifier {
       initiateConnectionAndSync();
     });
 
-    // Run periodic sync in background every 30 seconds
-    _syncTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+    // Run periodic sync in background every 3 minutes
+    _syncTimer = Timer.periodic(const Duration(minutes: 3), (timer) {
       if (isConnected) {
         syncWithAtlas();
       } else {
@@ -203,6 +203,17 @@ class InventoryProvider extends ChangeNotifier {
 
       // 4. Pull products from Atlas
       final remoteProductsRaw = await _mongodbService.fetchProductsRaw();
+      final remoteProdIds = remoteProductsRaw
+          .map((raw) => (raw['_id'] ?? raw['id']).toString())
+          .toSet();
+
+      // Sync deletions from Atlas to Local (Products)
+      for (var localProd in prodBox.values.toList()) {
+        if (localProd.isSynced && !remoteProdIds.contains(localProd.id)) {
+          await prodBox.delete(localProd.id);
+        }
+      }
+
       for (var raw in remoteProductsRaw) {
         final remoteProd = Product.fromJson(raw);
         final localProd = prodBox.get(remoteProd.id);
@@ -221,6 +232,17 @@ class InventoryProvider extends ChangeNotifier {
       // 5. Pull transactions from Atlas
       final remoteTransactionsRaw = await _mongodbService
           .fetchTransactionsRaw();
+      final remoteTxIds = remoteTransactionsRaw
+          .map((raw) => (raw['_id'] ?? raw['id']).toString())
+          .toSet();
+
+      // Sync deletions from Atlas to Local (Transactions)
+      for (var localTx in txBox.values.toList()) {
+        if (localTx.isSynced && !remoteTxIds.contains(localTx.id)) {
+          await txBox.delete(localTx.id);
+        }
+      }
+
       for (var raw in remoteTransactionsRaw) {
         final remoteTx = Transaction.fromJson(raw);
         final localTx = txBox.get(remoteTx.id);
