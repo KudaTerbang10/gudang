@@ -317,7 +317,7 @@ class InventoryProvider extends ChangeNotifier {
     }
   }
 
-  void addProduct(String name, int stock, String location) {
+  Future<void> addProduct(String name, int stock, String location) async {
     final newProduct = Product(
       id: 'prod_${DateTime.now().millisecondsSinceEpoch}',
       name: name,
@@ -334,7 +334,7 @@ class InventoryProvider extends ChangeNotifier {
     searchProduct(_searchQuery);
 
     // Sync to Atlas
-    _writeProductToAtlas(newProduct);
+    await _writeProductToAtlas(newProduct);
   }
 
   Future<void> updateProduct({
@@ -361,7 +361,7 @@ class InventoryProvider extends ChangeNotifier {
       searchProduct(_searchQuery);
 
       // Sync to Atlas
-      _writeProductToAtlas(updatedProduct);
+      await _writeProductToAtlas(updatedProduct);
     }
   }
 
@@ -379,7 +379,9 @@ class InventoryProvider extends ChangeNotifier {
       await txBox.delete(tx.id);
       _allTransactions.removeWhere((t) => t.id == tx.id);
       if (isConnected) {
-        _mongodbService.deleteTransactionRaw(tx.id).catchError((e) => print(e));
+        await _mongodbService
+            .deleteTransactionRaw(tx.id)
+            .catchError((e) => print(e));
       } else {
         final delBox = HiveBoxes.getPendingDeletionsBox();
         await delBox.add('transaction:${tx.id}');
@@ -472,8 +474,8 @@ class InventoryProvider extends ChangeNotifier {
       searchProduct(_searchQuery);
 
       // Sync to Atlas
-      _writeProductToAtlas(updatedProduct);
-      _writeTransactionToAtlas(transaction);
+      await _writeProductToAtlas(updatedProduct);
+      await _writeTransactionToAtlas(transaction);
 
       return true;
     } catch (e) {
@@ -555,8 +557,8 @@ class InventoryProvider extends ChangeNotifier {
       searchProduct(_searchQuery);
 
       // Sync to Atlas
-      _writeProductToAtlas(updatedProduct);
-      _writeTransactionToAtlas(transaction);
+      await _writeProductToAtlas(updatedProduct);
+      await _writeTransactionToAtlas(transaction);
 
       return true;
     } catch (e) {
@@ -625,8 +627,8 @@ class InventoryProvider extends ChangeNotifier {
       searchProduct(_searchQuery);
 
       // Sync to Atlas
-      _writeProductToAtlas(updatedProduct);
-      _writeTransactionToAtlas(updatedTransaction);
+      await _writeProductToAtlas(updatedProduct);
+      await _writeTransactionToAtlas(updatedTransaction);
     } catch (e) {
       print('Error editing transaction: $e');
       rethrow;
@@ -718,8 +720,8 @@ class InventoryProvider extends ChangeNotifier {
         _allTransactions.add(transaction);
 
         // Sync to Atlas
-        _writeProductToAtlas(updatedProduct);
-        _writeTransactionToAtlas(transaction);
+        await _writeProductToAtlas(updatedProduct);
+        await _writeTransactionToAtlas(transaction);
       }
 
       searchProduct(_searchQuery);
@@ -769,7 +771,7 @@ class InventoryProvider extends ChangeNotifier {
       searchProduct(_searchQuery);
 
       // Sync to Atlas
-      _writeProductToAtlas(updatedProduct);
+      await _writeProductToAtlas(updatedProduct);
       if (isConnected) {
         try {
           await _mongodbService.deleteTransactionRaw(transactionId);
