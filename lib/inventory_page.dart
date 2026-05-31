@@ -27,7 +27,7 @@ class _InventoryPageState extends State<InventoryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('ASP Warehouse'),
+        title: const Text('ASP Gudang'),
         actions: [
           Consumer<InventoryProvider>(
             builder: (context, provider, _) =>

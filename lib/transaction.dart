@@ -41,9 +41,13 @@ class Transaction extends HiveObject {
   @HiveField(11)
   final bool isSynced;
 
+  @HiveField(12)
+  final String productName;
+
   Transaction({
     required this.id,
     required this.productId,
+    required this.productName,
     required this.type,
     required this.quantity,
     required this.documentNumber,
@@ -59,6 +63,7 @@ class Transaction extends HiveObject {
   Transaction copyWith({
     String? id,
     String? productId,
+    String? productName,
     String? type,
     int? quantity,
     String? documentNumber,
@@ -73,6 +78,7 @@ class Transaction extends HiveObject {
     return Transaction(
       id: id ?? this.id,
       productId: productId ?? this.productId,
+      productName: productName ?? this.productName,
       type: type ?? this.type,
       quantity: quantity ?? this.quantity,
       documentNumber: documentNumber ?? this.documentNumber,
@@ -93,6 +99,7 @@ class Transaction extends HiveObject {
     return {
       '_id': id,
       'productId': productId,
+      'productName': productName,
       'type': type,
       'quantity': quantity,
       'documentNumber': documentNumber,
@@ -109,6 +116,7 @@ class Transaction extends HiveObject {
     return Transaction(
       id: json['_id'] as String? ?? json['id'] as String? ?? '',
       productId: json['productId'] as String? ?? '',
+      productName: json['productName'] as String? ?? '',
       type: json['type'] as String? ?? 'incoming',
       quantity: json['quantity'] as int? ?? 0,
       documentNumber: json['documentNumber'] as String? ?? '',

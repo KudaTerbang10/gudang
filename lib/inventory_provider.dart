@@ -66,7 +66,9 @@ class InventoryProvider extends ChangeNotifier {
         (p) => p.id == tx.productId,
         orElse: () => Product(
           id: tx.productId,
-          name: 'Produk Tidak Ditemukan (${tx.productId})',
+          name: tx.productName.isNotEmpty
+              ? tx.productName
+              : 'Produk Tidak Ditemukan (${tx.productId})',
           stock: 0,
           location: '-',
           updatedAt: DateTime.now(),
@@ -474,6 +476,7 @@ class InventoryProvider extends ChangeNotifier {
       final transaction = Transaction(
         id: 'tx_${DateTime.now().millisecondsSinceEpoch}',
         productId: productId,
+        productName: product.name,
         type: 'incoming',
         quantity: quantity,
         documentNumber: documentNumber,
@@ -555,6 +558,7 @@ class InventoryProvider extends ChangeNotifier {
       final transaction = Transaction(
         id: 'tx_${DateTime.now().millisecondsSinceEpoch}',
         productId: productId,
+        productName: product.name,
         type: 'outgoing',
         quantity: quantity,
         documentNumber: documentNumber,
@@ -722,6 +726,7 @@ class InventoryProvider extends ChangeNotifier {
         final transaction = Transaction(
           id: 'tx_${now.millisecondsSinceEpoch}_${product.id}',
           productId: product.id,
+          productName: product.name,
           type: type,
           quantity: quantity,
           documentNumber: documentNumber,
