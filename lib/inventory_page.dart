@@ -679,7 +679,11 @@ class _BulkTransactionDialogState extends State<_BulkTransactionDialog> {
     'Ninja Express',
     'Lion Parcel',
     'AnterAja',
-    'Wahana',
+    'Wahana Express',
+    'Baraka Express',
+    'Hira Express',
+    'APM',
+    'Redex',
   ];
 
   void _openScanner(TextEditingController controller) {

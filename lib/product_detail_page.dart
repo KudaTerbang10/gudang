@@ -172,7 +172,9 @@ class _ProductDetailPageState extends State<ProductDetailPage>
                   children: [
                     _buildIncomingTab(context, provider, product),
                     _buildOutgoingTab(context, provider, product),
-                    _buildHistoryTab(provider.getTransactionHistory(product.id)),
+                    _buildHistoryTab(
+                      provider.getTransactionHistory(product.id),
+                    ),
                   ],
                 ),
               ),
@@ -574,7 +576,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
           children: [
             _buildDetailRow('Tipe:', isIncoming ? 'Masuk' : 'Keluar'),
             _buildDetailRow('Jumlah:', '${transaction.quantity} Roll'),
-            _buildDetailRow('Nomor Dokumen:', transaction.documentNumber),
+            _buildDetailRow('No. Dokumen:', transaction.documentNumber),
             if (transaction.recipientName != null)
               _buildDetailRow('Penerima:', transaction.recipientName!),
             if (transaction.expedition != null)

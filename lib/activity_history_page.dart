@@ -318,7 +318,7 @@ class _ActivityHistoryPageState extends State<ActivityHistoryPage> {
               _detailRow('Produk:', productName),
               _detailRow('Tipe:', transaction.isIncoming ? 'Masuk' : 'Keluar'),
               _detailRow('Jumlah:', '${transaction.quantity} Roll'),
-              _detailRow('Nomor Dokumen:', transaction.documentNumber),
+              _detailRow('No. Dokumen:', transaction.documentNumber),
               if (transaction.recipientName != null)
                 _detailRow('Penerima:', transaction.recipientName!),
               if (transaction.expedition != null)
