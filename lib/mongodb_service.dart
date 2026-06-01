@@ -32,6 +32,28 @@ class MongodbService {
       // Set timeout for direct connection attempts
       await _db!.open().timeout(const Duration(seconds: 8));
       _isConnected = true;
+
+      // Menambahkan index untuk optimasi pencarian dan sorting
+      if (_isConnected) {
+        // 1. Prioritas Utama: Timestamp (untuk sorting default & filter periode)
+        await _db!
+            .collection('transactions')
+            .createIndex(keys: {'timestamp': -1});
+
+        // 2. Prioritas Kedua: Document Number (untuk pencarian spesifik/ID transaksi)
+        await _db!
+            .collection('transactions')
+            .createIndex(keys: {'documentNumber': 1});
+
+        // 3. Compound Index: Timestamp + Document Number
+        // Ini sangat efektif untuk pencarian "Cari nomor dokumen di rentang waktu tertentu"
+        await _db!
+            .collection('transactions')
+            .createIndex(keys: {'timestamp': -1, 'documentNumber': 1});
+        // Tambahkan index untuk nama produk agar pencarian di Atlas lebih cepat
+        await _db!.collection('products').createIndex(keys: {'name': 1});
+      }
+
       print("✅ Connected to MongoDB Atlas");
       return true;
     } catch (e) {
