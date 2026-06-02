@@ -18,8 +18,8 @@ class TransactionAdapter extends TypeAdapter<Transaction> {
     };
     return Transaction(
       id: fields[0] as String,
-      productId: fields[10] as String,
-      productName: fields[12] as String,
+      productId: fields[10] as String?,
+      productName: fields[12] as String?,
       type: fields[1] as String,
       quantity: fields[2] as int,
       documentNumber: fields[3] as String,
@@ -29,7 +29,7 @@ class TransactionAdapter extends TypeAdapter<Transaction> {
       timestamp: fields[7] as DateTime,
       expedition: fields[8] as String?,
       recipientName: fields[9] as String?,
-      isSynced: fields[11] as bool,
+      isSynced: fields[11] as bool?,
     );
   }
 

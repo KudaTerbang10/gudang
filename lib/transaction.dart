@@ -36,18 +36,18 @@ class Transaction extends HiveObject {
   final String? recipientName;
 
   @HiveField(10)
-  final String productId;
+  final String? productId;
 
   @HiveField(11)
-  final bool isSynced;
+  final bool? isSynced;
 
   @HiveField(12)
-  final String productName;
+  final String? productName;
 
   Transaction({
     required this.id,
-    required this.productId,
-    required this.productName,
+    this.productId,
+    this.productName,
     required this.type,
     required this.quantity,
     required this.documentNumber,
@@ -57,7 +57,7 @@ class Transaction extends HiveObject {
     required this.timestamp,
     this.expedition,
     this.recipientName,
-    required this.isSynced,
+    this.isSynced,
   });
 
   Transaction copyWith({

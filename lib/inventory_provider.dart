@@ -85,8 +85,11 @@ class InventoryProvider extends ChangeNotifier {
     _transactionsByProductId.clear();
     _docNumbersByProductId.clear();
     for (var tx in _allTransactions) {
-      _transactionsByProductId.putIfAbsent(tx.productId, () => []).add(tx);
-      _docNumbersByProductId.putIfAbsent(tx.productId, () => {}).add(tx.documentNumber.toLowerCase());
+      final productId = tx.productId ?? '';
+      _transactionsByProductId.putIfAbsent(productId, () => []).add(tx);
+      _docNumbersByProductId
+          .putIfAbsent(productId, () => {})
+          .add(tx.documentNumber.toLowerCase());
     }
     // Sort each product's transaction list by timestamp descending
     for (final list in _transactionsByProductId.values) {
@@ -122,12 +125,13 @@ class InventoryProvider extends ChangeNotifier {
 
     final all = <TransactionWithProduct>[];
     for (var tx in _allTransactions) {
-      final product = _productsById[tx.productId] ??
+      final product =
+          _productsById[tx.productId ?? ''] ??
           Product(
-            id: tx.productId,
-            name: tx.productName.isNotEmpty
-                ? tx.productName
-                : 'Produk Tidak Ditemukan (${tx.productId})',
+            id: tx.productId ?? '',
+            name: (tx.productName?.isNotEmpty ?? false)
+                ? tx.productName!
+                : 'Produk Tidak Ditemukan (${tx.productId ?? ''})',
             stock: 0,
             location: '-',
             updatedAt: DateTime.now(),
@@ -239,8 +243,9 @@ class InventoryProvider extends ChangeNotifier {
       }
 
       // 2. Push unsynced products
-      final unsyncedProducts =
-          prodBox.values.where((p) => !p.isSynced).toList();
+      final unsyncedProducts = prodBox.values
+          .where((p) => !(p.isSynced ?? false))
+          .toList();
       for (var prod in unsyncedProducts) {
         try {
           await _mongodbService.saveProductRaw(prod.toJson());
@@ -257,8 +262,9 @@ class InventoryProvider extends ChangeNotifier {
       }
 
       // 3. Push unsynced transactions
-      final unsyncedTransactions =
-          txBox.values.where((t) => !t.isSynced).toList();
+      final unsyncedTransactions = txBox.values
+          .where((t) => !(t.isSynced ?? false))
+          .toList();
       for (var tx in unsyncedTransactions) {
         try {
           await _mongodbService.saveTransactionRaw(tx.toJson());
@@ -316,8 +322,9 @@ class InventoryProvider extends ChangeNotifier {
       // 5. Pull transactions from Atlas (incremental if _lastSyncedAt exists)
       final List<Map<String, dynamic>> remoteTransactionsRaw;
       if (_lastSyncedAt != null) {
-        remoteTransactionsRaw =
-            await _mongodbService.fetchTransactionsSince(_lastSyncedAt!);
+        remoteTransactionsRaw = await _mongodbService.fetchTransactionsSince(
+          _lastSyncedAt!,
+        );
       } else {
         remoteTransactionsRaw = await _mongodbService.fetchTransactionsRaw();
       }
@@ -326,14 +333,16 @@ class InventoryProvider extends ChangeNotifier {
       final remoteTxIds = _lastSyncedAt != null
           ? await _mongodbService.fetchTransactionIdsRaw()
           : remoteTransactionsRaw
-              .map((raw) => (raw['_id'] ?? raw['id']).toString())
-              .toSet();
+                .map((raw) => (raw['_id'] ?? raw['id']).toString())
+                .toSet();
 
       for (var localTx in txBox.values.toList()) {
-        if (localTx.isSynced && !remoteTxIds.contains(localTx.id)) {
+        if ((localTx.isSynced ?? false) && !remoteTxIds.contains(localTx.id)) {
           // Balikkan perubahan stock sebelum hapus transaksi
           final prodBox = HiveBoxes.getProductsBox();
-          final product = _allProducts.where((p) => p.id == localTx.productId).firstOrNull;
+          final product = _allProducts
+              .where((p) => p.id == localTx.productId)
+              .firstOrNull;
           if (product != null) {
             final reversedStock = localTx.isIncoming
                 ? product.stock - localTx.quantity
@@ -374,7 +383,9 @@ class InventoryProvider extends ChangeNotifier {
         _filteredProducts = List.from(_allProducts);
       }
 
-      print("✅ DB Synced successfully at $_lastSyncTime (${hasChanges ? 'changes detected' : 'no changes'})");
+      print(
+        "✅ DB Synced successfully at $_lastSyncTime (${hasChanges ? 'changes detected' : 'no changes'})",
+      );
     } catch (e) {
       print("❌ Sync failed: $e");
     } finally {
