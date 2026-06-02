@@ -123,9 +123,9 @@ class Transaction extends HiveObject {
       notes: json['notes'] as String?,
       previousStock: json['previousStock'] as int? ?? 0,
       newStock: json['newStock'] as int? ?? 0,
-      timestamp: json['timestamp'] != null
-          ? DateTime.parse(json['timestamp'])
-          : DateTime.now(),
+      timestamp: json['timestamp'] is DateTime
+          ? json['timestamp'] as DateTime
+          : DateTime.tryParse(json['timestamp'] as String? ?? '') ?? DateTime.now(),
       expedition: json['expedition'] as String?,
       recipientName: json['recipientName'] as String?,
       isSynced: true,

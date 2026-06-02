@@ -65,9 +65,9 @@ class Product extends HiveObject {
       name: json['name'] as String? ?? '',
       stock: json['stock'] as int? ?? 0,
       location: json['location'] as String? ?? '',
-      updatedAt: json['updatedAt'] != null
-          ? DateTime.parse(json['updatedAt'])
-          : DateTime.now(),
+      updatedAt: json['updatedAt'] is DateTime
+          ? json['updatedAt'] as DateTime
+          : DateTime.tryParse(json['updatedAt'] as String? ?? '') ?? DateTime.now(),
       isSynced: true,
     );
   }
