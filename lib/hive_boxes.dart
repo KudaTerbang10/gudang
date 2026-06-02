@@ -6,6 +6,7 @@ class HiveBoxes {
   static const String productsBox = 'products';
   static const String transactionsBox = 'transactions';
   static const String pendingDeletionsBox = 'pending_deletions';
+  static const String configBox = 'config';
 
   /// Initialize Hive and open boxes
   static Future<void> init() async {
@@ -18,6 +19,7 @@ class HiveBoxes {
       await Hive.openBox<Product>(productsBox);
       await Hive.openBox<Transaction>(transactionsBox);
       await Hive.openBox<String>(pendingDeletionsBox);
+      await Hive.openBox<String>(configBox);
 
       print('✅ Hive initialized successfully');
     } catch (e) {
@@ -39,6 +41,11 @@ class HiveBoxes {
   /// Get pending deletions box
   static Box<String> getPendingDeletionsBox() {
     return Hive.box<String>(pendingDeletionsBox);
+  }
+
+  /// Get config box (key-value string storage)
+  static Box<String> getConfigBox() {
+    return Hive.box<String>(configBox);
   }
 
   /// Close all boxes

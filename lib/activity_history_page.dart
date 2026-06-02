@@ -1,10 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'inventory_provider.dart';
 import 'transaction.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'sounds.dart';
 import 'analytics_page.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -21,6 +22,7 @@ class _ActivityHistoryPageState extends State<ActivityHistoryPage> {
   HistoryFilter _selectedFilter = HistoryFilter.all;
   DateTimeRange? _customRange;
   final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
 
   bool _applyFilter(DateTime timestamp) {
     final now = DateTime.now();
@@ -66,7 +68,7 @@ class _ActivityHistoryPageState extends State<ActivityHistoryPage> {
             if (barcodes.isNotEmpty) {
               final String? code = barcodes.first.rawValue;
               if (code != null) {
-                AudioPlayer().play(AssetSource('sounds/scan.mp3'));
+                AppAudio().playScan();
                 controller.text = code;
                 setState(() {});
                 Navigator.pop(context);
@@ -146,7 +148,13 @@ class _ActivityHistoryPageState extends State<ActivityHistoryPage> {
                 filled: true,
                 fillColor: Colors.white,
               ),
-              onChanged: (value) => setState(() {}),
+              onChanged: (value) {
+                _searchDebounce?.cancel();
+                _searchDebounce = Timer(
+                  const Duration(milliseconds: 300),
+                  () => setState(() {}),
+                );
+              },
             ),
           ),
         ),
@@ -453,7 +461,7 @@ class _ActivityHistoryPageState extends State<ActivityHistoryPage> {
   }
 
   void _showSuccessSnackBar(BuildContext context, String message) {
-    AudioPlayer().play(AssetSource('sounds/success.mp3'));
+    AppAudio().playSuccess();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -463,8 +471,15 @@ class _ActivityHistoryPageState extends State<ActivityHistoryPage> {
     );
   }
 
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
   void _showErrorSnackBar(BuildContext context, String message) {
-    AudioPlayer().play(AssetSource('sounds/error.mp3'));
+    AppAudio().playError();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),

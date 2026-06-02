@@ -5,7 +5,7 @@ import 'product.dart';
 import 'transaction.dart';
 import 'package:intl/intl.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'sounds.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final String productId;
@@ -69,7 +69,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
             if (barcodes.isNotEmpty) {
               final String? code = barcodes.first.rawValue;
               if (code != null) {
-                AudioPlayer().play(AssetSource('sounds/scan.mp3'));
+                AppAudio().playScan();
                 controller.text = code;
                 Navigator.pop(context);
               }
@@ -487,14 +487,11 @@ class _ProductDetailPageState extends State<ProductDetailPage>
       );
     }
 
-    final sortedHistory = List<Transaction>.from(history)
-      ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
-
     return ListView.builder(
       padding: const EdgeInsets.all(8),
-      itemCount: sortedHistory.length,
+      itemCount: history.length,
       itemBuilder: (context, index) {
-        final transaction = sortedHistory[index];
+        final transaction = history[index];
         final isIncoming = transaction.isIncoming;
 
         return GestureDetector(
@@ -714,7 +711,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   }
 
   void _showSuccessSnackBar(BuildContext context, String message) {
-    AudioPlayer().play(AssetSource('sounds/success.mp3'));
+    AppAudio().playSuccess();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -725,7 +722,7 @@ class _ProductDetailPageState extends State<ProductDetailPage>
   }
 
   void _showErrorSnackBar(BuildContext context, String message) {
-    AudioPlayer().play(AssetSource('sounds/error.mp3'));
+    AppAudio().playError();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),

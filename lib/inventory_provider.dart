@@ -22,7 +22,18 @@ class InventoryProvider extends ChangeNotifier {
   String? _lastSyncTime;
   Timer? _syncTimer;
 
+  DateTime? _lastSyncedAt;
+  List<TransactionWithProduct>? _cachedTransactionsWithProduct;
+
+  // Map indexes untuk O(1) lookup
+  final Map<String, Product> _productsById = {};
+  final Map<String, List<Transaction>> _transactionsByProductId = {};
+  final Map<String, Set<String>> _docNumbersByProductId = {};
+
+  Timer? _searchDebounce;
+
   InventoryProvider() {
+    _loadLastSyncedAt();
     _loadFromHive();
     // Connect and sync on app startup
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -39,9 +50,54 @@ class InventoryProvider extends ChangeNotifier {
     });
   }
 
+  void _loadLastSyncedAt() {
+    try {
+      final box = HiveBoxes.getConfigBox();
+      final val = box.get('lastSyncedAt');
+      if (val != null) {
+        _lastSyncedAt = DateTime.parse(val);
+      }
+    } catch (e) {
+      print('Error loading lastSyncedAt: $e');
+    }
+  }
+
+  void _saveLastSyncedAt(DateTime time) {
+    _lastSyncedAt = time;
+    try {
+      final box = HiveBoxes.getConfigBox();
+      box.put('lastSyncedAt', time.toIso8601String());
+    } catch (e) {
+      print('Error saving lastSyncedAt: $e');
+    }
+  }
+
+  void _invalidateCache() {
+    _cachedTransactionsWithProduct = null;
+    _rebuildIndexes();
+  }
+
+  void _rebuildIndexes() {
+    _productsById
+      ..clear()
+      ..addEntries(_allProducts.map((p) => MapEntry(p.id, p)));
+
+    _transactionsByProductId.clear();
+    _docNumbersByProductId.clear();
+    for (var tx in _allTransactions) {
+      _transactionsByProductId.putIfAbsent(tx.productId, () => []).add(tx);
+      _docNumbersByProductId.putIfAbsent(tx.productId, () => {}).add(tx.documentNumber.toLowerCase());
+    }
+    // Sort each product's transaction list by timestamp descending
+    for (final list in _transactionsByProductId.values) {
+      list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    }
+  }
+
   @override
   void dispose() {
     _syncTimer?.cancel();
+    _searchDebounce?.cancel();
     super.dispose();
   }
 
@@ -60,27 +116,32 @@ class InventoryProvider extends ChangeNotifier {
 
   /// Merge transaction history with product info dynamically
   List<TransactionWithProduct> get allTransactionsWithProduct {
-    List<TransactionWithProduct> all = [];
+    if (_cachedTransactionsWithProduct != null) {
+      return _cachedTransactionsWithProduct!;
+    }
+
+    final all = <TransactionWithProduct>[];
     for (var tx in _allTransactions) {
-      final product = _allProducts.firstWhere(
-        (p) => p.id == tx.productId,
-        orElse: () => Product(
-          id: tx.productId,
-          name: tx.productName.isNotEmpty
-              ? tx.productName
-              : 'Produk Tidak Ditemukan (${tx.productId})',
-          stock: 0,
-          location: '-',
-          updatedAt: DateTime.now(),
-          isSynced: true,
-        ),
-      );
+      final product = _productsById[tx.productId] ??
+          Product(
+            id: tx.productId,
+            name: tx.productName.isNotEmpty
+                ? tx.productName
+                : 'Produk Tidak Ditemukan (${tx.productId})',
+            stock: 0,
+            location: '-',
+            updatedAt: DateTime.now(),
+            isSynced: true,
+          );
       all.add(TransactionWithProduct(tx, product));
     }
-    // Sort by latest timestamp
+
+    // Sort by latest timestamp (descending)
     all.sort(
       (a, b) => b.transaction.timestamp.compareTo(a.transaction.timestamp),
     );
+
+    _cachedTransactionsWithProduct = all;
     return all;
   }
 
@@ -94,6 +155,7 @@ class InventoryProvider extends ChangeNotifier {
       _allTransactions = txBox.values.toList().cast<Transaction>();
 
       _filteredProducts = List.from(_allProducts);
+      _invalidateCache();
       print(
         '✅ Loaded ${_allProducts.length} products and ${_allTransactions.length} transactions from Hive',
       );
@@ -151,6 +213,7 @@ class InventoryProvider extends ChangeNotifier {
       final prodBox = HiveBoxes.getProductsBox();
       final txBox = HiveBoxes.getTransactionsBox();
       final delBox = HiveBoxes.getPendingDeletionsBox();
+      bool hasChanges = false;
 
       // 1. Process pending deletions from Atlas
       final deletions = List<String>.from(delBox.values);
@@ -176,34 +239,42 @@ class InventoryProvider extends ChangeNotifier {
       }
 
       // 2. Push unsynced products
-      final unsyncedProducts = prodBox.values
-          .where((p) => !p.isSynced)
-          .toList();
+      final unsyncedProducts =
+          prodBox.values.where((p) => !p.isSynced).toList();
       for (var prod in unsyncedProducts) {
         try {
           await _mongodbService.saveProductRaw(prod.toJson());
           final updated = prod.copyWith(isSynced: true);
           await prodBox.put(updated.id, updated);
+          final idx = _allProducts.indexWhere((p) => p.id == updated.id);
+          if (idx != -1) {
+            _allProducts[idx] = updated;
+            hasChanges = true;
+          }
         } catch (e) {
           print("Error pushing product ${prod.id}: $e");
         }
       }
 
       // 3. Push unsynced transactions
-      final unsyncedTransactions = txBox.values
-          .where((t) => !t.isSynced)
-          .toList();
+      final unsyncedTransactions =
+          txBox.values.where((t) => !t.isSynced).toList();
       for (var tx in unsyncedTransactions) {
         try {
           await _mongodbService.saveTransactionRaw(tx.toJson());
           final updated = tx.copyWith(isSynced: true);
           await txBox.put(updated.id, updated);
+          final idx = _allTransactions.indexWhere((t) => t.id == updated.id);
+          if (idx != -1) {
+            _allTransactions[idx] = updated;
+            hasChanges = true;
+          }
         } catch (e) {
           print("Error pushing transaction ${tx.id}: $e");
         }
       }
 
-      // 4. Pull products from Atlas
+      // 4. Pull products from Atlas (full pull — products are few)
       final remoteProductsRaw = await _mongodbService.fetchProductsRaw();
       final remoteProdIds = remoteProductsRaw
           .map((raw) => (raw['_id'] ?? raw['id']).toString())
@@ -213,35 +284,72 @@ class InventoryProvider extends ChangeNotifier {
       for (var localProd in prodBox.values.toList()) {
         if (localProd.isSynced && !remoteProdIds.contains(localProd.id)) {
           await prodBox.delete(localProd.id);
+          _allProducts.removeWhere((p) => p.id == localProd.id);
+          hasChanges = true;
         }
       }
 
       for (var raw in remoteProductsRaw) {
         final remoteProd = Product.fromJson(raw);
         final localProd = prodBox.get(remoteProd.id);
+        bool changed = false;
 
         if (localProd == null) {
           await prodBox.put(remoteProd.id, remoteProd);
+          _allProducts.add(remoteProd);
+          changed = true;
         } else {
           // If local has updates not synced, don't overwrite it
           if (localProd.isSynced &&
               remoteProd.updatedAt.isAfter(localProd.updatedAt)) {
             await prodBox.put(remoteProd.id, remoteProd);
+            final idx = _allProducts.indexWhere((p) => p.id == remoteProd.id);
+            if (idx != -1) {
+              _allProducts[idx] = remoteProd;
+            }
+            changed = true;
           }
         }
+        if (changed) hasChanges = true;
       }
 
-      // 5. Pull transactions from Atlas
-      final remoteTransactionsRaw = await _mongodbService
-          .fetchTransactionsRaw();
-      final remoteTxIds = remoteTransactionsRaw
-          .map((raw) => (raw['_id'] ?? raw['id']).toString())
-          .toSet();
+      // 5. Pull transactions from Atlas (incremental if _lastSyncedAt exists)
+      final List<Map<String, dynamic>> remoteTransactionsRaw;
+      if (_lastSyncedAt != null) {
+        remoteTransactionsRaw =
+            await _mongodbService.fetchTransactionsSince(_lastSyncedAt!);
+      } else {
+        remoteTransactionsRaw = await _mongodbService.fetchTransactionsRaw();
+      }
 
-      // Sync deletions from Atlas to Local (Transactions)
+      // Selalu deteksi transaksi yang dihapus dari Atlas (lightweight ID check)
+      final remoteTxIds = _lastSyncedAt != null
+          ? await _mongodbService.fetchTransactionIdsRaw()
+          : remoteTransactionsRaw
+              .map((raw) => (raw['_id'] ?? raw['id']).toString())
+              .toSet();
+
       for (var localTx in txBox.values.toList()) {
         if (localTx.isSynced && !remoteTxIds.contains(localTx.id)) {
+          // Balikkan perubahan stock sebelum hapus transaksi
+          final prodBox = HiveBoxes.getProductsBox();
+          final product = _allProducts.where((p) => p.id == localTx.productId).firstOrNull;
+          if (product != null) {
+            final reversedStock = localTx.isIncoming
+                ? product.stock - localTx.quantity
+                : product.stock + localTx.quantity;
+            final restored = product.copyWith(
+              stock: reversedStock,
+              updatedAt: DateTime.now(),
+              isSynced: false,
+            );
+            await prodBox.put(restored.id, restored);
+            final pIdx = _allProducts.indexWhere((p) => p.id == product.id);
+            if (pIdx != -1) _allProducts[pIdx] = restored;
+          }
           await txBox.delete(localTx.id);
+          _allTransactions.removeWhere((t) => t.id == localTx.id);
+          hasChanges = true;
         }
       }
 
@@ -251,12 +359,22 @@ class InventoryProvider extends ChangeNotifier {
 
         if (localTx == null) {
           await txBox.put(remoteTx.id, remoteTx);
+          _allTransactions.insert(0, remoteTx);
+          hasChanges = true;
         }
       }
 
-      _loadFromHive();
+      // Update _lastSyncedAt after successful sync
+      _saveLastSyncedAt(DateTime.now());
+
       _lastSyncTime = DateFormat('HH:mm').format(DateTime.now());
-      print("✅ DB Synced successfully at $_lastSyncTime");
+
+      if (hasChanges) {
+        _invalidateCache();
+        _filteredProducts = List.from(_allProducts);
+      }
+
+      print("✅ DB Synced successfully at $_lastSyncTime (${hasChanges ? 'changes detected' : 'no changes'})");
     } catch (e) {
       print("❌ Sync failed: $e");
     } finally {
@@ -278,6 +396,7 @@ class InventoryProvider extends ChangeNotifier {
           _allProducts[idx] = updated;
           final fIdx = _filteredProducts.indexWhere((p) => p.id == product.id);
           if (fIdx != -1) _filteredProducts[fIdx] = updated;
+          _invalidateCache();
           notifyListeners();
         }
       }
@@ -297,6 +416,7 @@ class InventoryProvider extends ChangeNotifier {
         final idx = _allTransactions.indexWhere((t) => t.id == tx.id);
         if (idx != -1) {
           _allTransactions[idx] = updated;
+          _invalidateCache();
           notifyListeners();
         }
       }
@@ -313,6 +433,18 @@ class InventoryProvider extends ChangeNotifier {
 
   void searchProduct(String query) {
     _searchQuery = query;
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      _applySearchImmediate(_searchQuery);
+    });
+  }
+
+  void _refreshSearch() {
+    _searchDebounce?.cancel();
+    _applySearchImmediate(_searchQuery);
+  }
+
+  void _applySearchImmediate(String query) {
     if (query.isEmpty) {
       _filteredProducts = List.from(_allProducts);
     } else {
@@ -355,7 +487,8 @@ class InventoryProvider extends ChangeNotifier {
     final box = HiveBoxes.getProductsBox();
     box.put(newProduct.id, newProduct);
     _allProducts.add(newProduct);
-    searchProduct(_searchQuery);
+    _invalidateCache();
+    _refreshSearch();
 
     // Sync to Atlas
     await _writeProductToAtlas(newProduct);
@@ -382,7 +515,8 @@ class InventoryProvider extends ChangeNotifier {
       final box = HiveBoxes.getProductsBox();
       await box.put(id, updatedProduct);
       _allProducts[index] = updatedProduct;
-      searchProduct(_searchQuery);
+      _invalidateCache();
+      _refreshSearch();
 
       // Sync to Atlas
       await _writeProductToAtlas(updatedProduct);
@@ -393,6 +527,7 @@ class InventoryProvider extends ChangeNotifier {
     final box = HiveBoxes.getProductsBox();
     await box.delete(productId);
     _allProducts.removeWhere((p) => p.id == productId);
+    _invalidateCache();
 
     // Delete associated transactions locally
     final txBox = HiveBoxes.getTransactionsBox();
@@ -411,8 +546,9 @@ class InventoryProvider extends ChangeNotifier {
         await delBox.add('transaction:${tx.id}');
       }
     }
+    _invalidateCache();
 
-    searchProduct(_searchQuery);
+    _refreshSearch();
 
     // Sync deletion to Atlas
     if (isConnected) {
@@ -430,11 +566,9 @@ class InventoryProvider extends ChangeNotifier {
   // ===== TRANSACTION OPERATIONS =====
 
   bool isDocumentNumberExists(String productId, String documentNumber) {
-    return _allTransactions.any(
-      (t) =>
-          t.productId == productId &&
-          t.documentNumber.toLowerCase() == documentNumber.toLowerCase(),
-    );
+    final docs = _docNumbersByProductId[productId];
+    if (docs == null) return false;
+    return docs.contains(documentNumber.toLowerCase());
   }
 
   Future<bool> addIncoming({
@@ -494,9 +628,10 @@ class InventoryProvider extends ChangeNotifier {
 
       final txBox = HiveBoxes.getTransactionsBox();
       await txBox.put(transaction.id, transaction);
-      _allTransactions.add(transaction);
+      _allTransactions.insert(0, transaction);
 
-      searchProduct(_searchQuery);
+      _invalidateCache();
+      _refreshSearch();
 
       // Sync to Atlas
       await _writeProductToAtlas(updatedProduct);
@@ -578,9 +713,10 @@ class InventoryProvider extends ChangeNotifier {
 
       final txBox = HiveBoxes.getTransactionsBox();
       await txBox.put(transaction.id, transaction);
-      _allTransactions.add(transaction);
+      _allTransactions.insert(0, transaction);
 
-      searchProduct(_searchQuery);
+      _invalidateCache();
+      _refreshSearch();
 
       // Sync to Atlas
       await _writeProductToAtlas(updatedProduct);
@@ -650,7 +786,8 @@ class InventoryProvider extends ChangeNotifier {
       await txBox.put(transactionId, updatedTransaction);
       _allTransactions[txIndex] = updatedTransaction;
 
-      searchProduct(_searchQuery);
+      _invalidateCache();
+      _refreshSearch();
 
       // Sync to Atlas
       await _writeProductToAtlas(updatedProduct);
@@ -670,6 +807,9 @@ class InventoryProvider extends ChangeNotifier {
     String? notes,
   }) async {
     try {
+      if (items.isEmpty) {
+        throw Exception('Daftar item kosong. Tambahkan minimal 1 item.');
+      }
       final isIncoming = type == 'incoming';
       final List<Map<String, dynamic>> processingData = [];
 
@@ -707,6 +847,9 @@ class InventoryProvider extends ChangeNotifier {
       final prodBox = HiveBoxes.getProductsBox();
       final txBox = HiveBoxes.getTransactionsBox();
 
+      final List<Product> batchProducts = [];
+      final List<Transaction> batchTransactions = [];
+
       for (final data in processingData) {
         final Product product = data['product'];
         final int quantity = data['quantity'];
@@ -739,19 +882,41 @@ class InventoryProvider extends ChangeNotifier {
           isSynced: false,
         );
 
+        batchProducts.add(updatedProduct);
+        batchTransactions.add(transaction);
+
         // Save locally
         await prodBox.put(product.id, updatedProduct);
         _allProducts[productIndex] = updatedProduct;
 
         await txBox.put(transaction.id, transaction);
-        _allTransactions.add(transaction);
-
-        // Sync to Atlas
-        await _writeProductToAtlas(updatedProduct);
-        await _writeTransactionToAtlas(transaction);
+        _allTransactions.insert(0, transaction);
       }
 
-      searchProduct(_searchQuery);
+      // Sync ke Atlas (sequential, bukan parallel — hindari "No master connection")
+      if (isConnected) {
+        for (final p in batchProducts) {
+          await _mongodbService.saveProductRaw(p.toJson());
+        }
+        for (final t in batchTransactions) {
+          await _mongodbService.saveTransactionRaw(t.toJson());
+        }
+        for (final p in batchProducts) {
+          final synced = p.copyWith(isSynced: true);
+          await prodBox.put(synced.id, synced);
+          final idx = _allProducts.indexWhere((x) => x.id == p.id);
+          if (idx != -1) _allProducts[idx] = synced;
+        }
+        for (final t in batchTransactions) {
+          final synced = t.copyWith(isSynced: true);
+          await txBox.put(synced.id, synced);
+          final idx = _allTransactions.indexWhere((x) => x.id == t.id);
+          if (idx != -1) _allTransactions[idx] = synced;
+        }
+      }
+
+      _invalidateCache();
+      _refreshSearch();
     } catch (e) {
       rethrow;
     }
@@ -795,7 +960,8 @@ class InventoryProvider extends ChangeNotifier {
       await txBox.delete(transactionId);
       _allTransactions.removeAt(txIndex);
 
-      searchProduct(_searchQuery);
+      _invalidateCache();
+      _refreshSearch();
 
       // Sync to Atlas
       await _writeProductToAtlas(updatedProduct);
@@ -815,14 +981,10 @@ class InventoryProvider extends ChangeNotifier {
   }
 
   List<Transaction> getTransactionHistory(String productId) {
-    return _allTransactions.where((t) => t.productId == productId).toList();
+    return _transactionsByProductId[productId] ?? [];
   }
 
   Product? getProductById(String productId) {
-    try {
-      return _allProducts.firstWhere((p) => p.id == productId);
-    } catch (e) {
-      return null;
-    }
+    return _productsById[productId];
   }
 }

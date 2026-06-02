@@ -4,7 +4,7 @@ import 'inventory_provider.dart';
 import 'product.dart';
 import 'product_detail_page.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'sounds.dart';
 import 'activity_history_page.dart';
 
 class InventoryPage extends StatefulWidget {
@@ -240,6 +240,8 @@ class _InventoryPageState extends State<InventoryPage> {
               leading: CircleAvatar(child: Text(p.location)),
               title: Text(
                 p.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               subtitle: Text('Lokasi: ${p.location}'),
@@ -422,7 +424,7 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   static void _showSuccessSnackBar(BuildContext context, String message) {
-    AudioPlayer().play(AssetSource('sounds/success.mp3'));
+    AppAudio().playSuccess();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -433,7 +435,7 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   static void _showErrorSnackBar(BuildContext context, String message) {
-    AudioPlayer().play(AssetSource('sounds/error.mp3'));
+    AppAudio().playError();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -698,7 +700,7 @@ class _BulkTransactionDialogState extends State<_BulkTransactionDialog> {
             if (barcodes.isNotEmpty) {
               final String? code = barcodes.first.rawValue;
               if (code != null) {
-                AudioPlayer().play(AssetSource('sounds/scan.mp3'));
+                AppAudio().playScan();
                 controller.text = code;
                 Navigator.pop(context);
               }
@@ -921,7 +923,7 @@ class _BulkTransactionDialogState extends State<_BulkTransactionDialog> {
 
               if (mounted) {
                 Navigator.pop(context);
-                AudioPlayer().play(AssetSource('sounds/success.mp3'));
+                AppAudio().playSuccess();
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Transaksi Berhasil Disimpan'),
@@ -940,7 +942,7 @@ class _BulkTransactionDialogState extends State<_BulkTransactionDialog> {
   }
 
   void _error(String msg) {
-    AudioPlayer().play(AssetSource('sounds/error.mp3'));
+    AppAudio().playError();
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.red));

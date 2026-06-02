@@ -50,6 +50,12 @@ class MongodbService {
         await _db!
             .collection('transactions')
             .createIndex(keys: {'timestamp': -1, 'documentNumber': 1});
+
+        // 4. Index untuk productId (per-product history query)
+        await _db!
+            .collection('transactions')
+            .createIndex(keys: {'productId': 1, 'timestamp': -1});
+
         // Tambahkan index untuk nama produk agar pencarian di Atlas lebih cepat
         await _db!.collection('products').createIndex(keys: {'name': 1});
       }
@@ -84,10 +90,35 @@ class MongodbService {
     return await _db!.collection('products').find().toList();
   }
 
+  /// Fetch products updated since given timestamp (incremental sync)
+  Future<List<Map<String, dynamic>>> fetchProductsSince(DateTime since) async {
+    if (!isConnected) throw Exception("Not connected to Atlas");
+    final query = where.gte('updatedAt', since.toIso8601String());
+    return await _db!.collection('products').find(query).toList();
+  }
+
   /// Fetch all transactions from Atlas
   Future<List<Map<String, dynamic>>> fetchTransactionsRaw() async {
     if (!isConnected) throw Exception("Not connected to Atlas");
     return await _db!.collection('transactions').find().toList();
+  }
+
+  /// Fetch only transaction IDs from Atlas (lightweight, for deletion detection)
+  Future<Set<String>> fetchTransactionIdsRaw() async {
+    if (!isConnected) throw Exception("Not connected to Atlas");
+    final docs =
+        await _db!.collection('transactions').find(where.fields(['_id'])).toList();
+    return docs
+        .map((doc) => (doc['_id'] ?? doc['id']).toString())
+        .toSet();
+  }
+
+  /// Fetch transactions created since given timestamp (incremental sync)
+  Future<List<Map<String, dynamic>>> fetchTransactionsSince(
+      DateTime since) async {
+    if (!isConnected) throw Exception("Not connected to Atlas");
+    final query = where.gte('timestamp', since.toIso8601String());
+    return await _db!.collection('transactions').find(query).toList();
   }
 
   /// Upsert a product to Atlas
