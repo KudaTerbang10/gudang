@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'inventory_provider.dart';
@@ -159,7 +160,10 @@ class _ActivityHistoryPageState extends State<ActivityHistoryPage> {
           ),
         ),
       ),
-      body: Column(
+      body: Stack(
+        children: [
+          const _WaveBackground(),
+          Column(
         children: [
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -200,14 +204,35 @@ class _ActivityHistoryPageState extends State<ActivityHistoryPage> {
                   );
                 }
 
+                // Group by nomor dokumen
+                final Map<String, List<TransactionWithProduct>> grouped = {};
+                for (final item in history) {
+                  final doc = item.transaction.documentNumber;
+                  grouped.putIfAbsent(doc, () => []);
+                  grouped[doc]!.add(item);
+                }
+
+                // Sort grup berdasarkan timestamp terbaru
+                final sortedGroups = grouped.entries.toList()
+                  ..sort((a, b) {
+                    final aLatest = a.value
+                        .map((e) => e.transaction.timestamp)
+                        .reduce((a, b) => a.isAfter(b) ? a : b);
+                    final bLatest = b.value
+                        .map((e) => e.transaction.timestamp)
+                        .reduce((a, b) => a.isAfter(b) ? a : b);
+                    return bLatest.compareTo(aLatest);
+                  });
+
                 return ListView.builder(
                   padding: const EdgeInsets.all(8),
-                  itemCount: history.length,
+                  itemCount: sortedGroups.length,
                   itemBuilder: (context, index) {
-                    final item = history[index];
-                    final tx = item.transaction;
-                    final prod = item.product;
-                    final isIncoming = tx.isIncoming;
+                    final group = sortedGroups[index];
+                    final docNumber = group.key;
+                    final items = group.value;
+                    final isAllIncoming =
+                        items.every((e) => e.transaction.isIncoming);
 
                     return Card(
                       margin: const EdgeInsets.symmetric(
@@ -215,60 +240,72 @@ class _ActivityHistoryPageState extends State<ActivityHistoryPage> {
                         horizontal: 4,
                       ),
                       elevation: 2,
-                      child: ListTile(
-                        onTap: () =>
-                            _showTransactionDetails(context, tx, prod.name),
-                        onLongPress: () =>
-                            _showEditTransactionDialog(context, tx, prod.id),
+                      child: ExpansionTile(
+                        initiallyExpanded: items.length == 1,
                         leading: CircleAvatar(
-                          backgroundColor: isIncoming
+                          backgroundColor: isAllIncoming
                               ? Colors.green.shade600
                               : Colors.red.shade600,
                           foregroundColor: Colors.white,
                           child: Icon(
-                            isIncoming
+                            isAllIncoming
                                 ? Icons.arrow_downward
                                 : Icons.arrow_upward,
                           ),
                         ),
                         title: Text(
-                          prod.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          docNumber,
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Doc: ${tx.documentNumber}'),
-                            Text(
-                              DateFormat(
-                                'dd MMM yyyy, HH:mm',
-                              ).format(tx.timestamp),
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                          ],
+                        subtitle: Text(
+                          '${items.length} item · ${DateFormat('dd MMM yyyy, HH:mm').format(items.first.transaction.timestamp)}',
+                          style: const TextStyle(fontSize: 12),
                         ),
-                        trailing: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              '${isIncoming ? "+" : "-"}${tx.quantity} Roll',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: isIncoming
-                                    ? Colors.green.shade700
-                                    : Colors.red.shade700,
-                                fontSize: 16,
+                        children: items.map((item) {
+                          final tx = item.transaction;
+                          final prod = item.product;
+                          return ListTile(
+                            onTap: () => _showTransactionDetails(
+                                context, tx, prod.name),
+                            onLongPress: () =>
+                                _showEditTransactionDialog(
+                                    context, tx, prod.id),
+                            leading: CircleAvatar(
+                              radius: 16,
+                              backgroundColor: tx.isIncoming
+                                  ? Colors.green.shade100
+                                  : Colors.red.shade100,
+                              child: Text(
+                                (items.indexOf(item) + 1).toString(),
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: tx.isIncoming
+                                      ? Colors.green.shade800
+                                      : Colors.red.shade800,
+                                ),
                               ),
                             ),
-                            Text(
-                              'Stok: ${tx.newStock}',
+                            title: Text(
+                              prod.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              'Stok: ${tx.previousStock} → ${tx.newStock}',
                               style: const TextStyle(fontSize: 11),
                             ),
-                          ],
-                        ),
+                            trailing: Text(
+                              '${tx.isIncoming ? "+" : "-"}${tx.quantity} Roll',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: tx.isIncoming
+                                    ? Colors.green.shade700
+                                    : Colors.red.shade700,
+                              ),
+                            ),
+                          );
+                        }).toList(),
                       ),
                     );
                   },
@@ -278,10 +315,12 @@ class _ActivityHistoryPageState extends State<ActivityHistoryPage> {
           ),
         ],
       ),
-    );
-  }
+    ],
+  ),
+);
+}
 
-  Widget _filterChip(HistoryFilter filter, String label) {
+Widget _filterChip(HistoryFilter filter, String label) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 4),
       child: ChoiceChip(
@@ -488,4 +527,71 @@ class _ActivityHistoryPageState extends State<ActivityHistoryPage> {
       ),
     );
   }
+}
+
+class _WaveBackground extends StatelessWidget {
+  const _WaveBackground();
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFE3F2FD),
+              Color(0xFFBBDEFB),
+              Color(0xFFE0F7FA),
+              Color(0xFFF1F8E9),
+            ],
+            stops: [0.0, 0.35, 0.7, 1.0],
+          ),
+        ),
+        child: CustomPaint(
+          painter: _WavePainter(),
+        ),
+      ),
+    );
+  }
+}
+
+class _WavePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final wavePaint1 = Paint()
+      ..color = const Color(0x3381D4FA)
+      ..style = PaintingStyle.fill;
+    final wavePaint2 = Paint()
+      ..color = const Color(0x267CB342)
+      ..style = PaintingStyle.fill;
+    final wavePaint3 = Paint()
+      ..color = const Color(0x1A4DD0E1)
+      ..style = PaintingStyle.fill;
+
+    void drawWave(Paint paint, double offsetY, double amplitude,
+        double frequency, double phase) {
+      final path = Path();
+      path.moveTo(0, size.height * offsetY);
+      for (double x = 0; x <= size.width; x++) {
+        path.lineTo(
+          x,
+          size.height * offsetY +
+              math.sin((x * frequency * math.pi / 180) + phase) * amplitude,
+        );
+      }
+      path.lineTo(size.width, size.height);
+      path.lineTo(0, size.height);
+      path.close();
+      canvas.drawPath(path, paint);
+    }
+
+    drawWave(wavePaint1, 0.85, 18, 0.6, 0);
+    drawWave(wavePaint2, 0.88, 14, 0.8, math.pi / 3);
+    drawWave(wavePaint3, 0.92, 10, 0.5, math.pi / 4);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
